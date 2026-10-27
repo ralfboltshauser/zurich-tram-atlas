@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.venv/
+scripts/raw/
+test-results/
+playwright-report/
+deploy/
+*.tsbuildinfo
+.vercel/
+.env*
+!.env.example
+local-dist/
+qa/
+*.log
+.DS_Store
+.vercel

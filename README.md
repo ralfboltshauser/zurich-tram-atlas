@@ -85,6 +85,6 @@ Reports, traces and screenshots are generated locally and excluded from Git. Aut
 
 ## Deployment
 
-This repository is connected to the Vercel project `zurich-tram-atlas`. Pushes to `main` deploy production; other branches use Vercel preview deployments. Vercel uses Node.js 24, runs `npm run build` and serves `dist/`. The custom production domain is `zurich-tram-atlas.ralfboltshauser.com`.
+This repository is connected to the Vercel project `zurich-tram-atlas`. Production is deployed by Vercel’s GitHub integration: pushes to `main` deploy production, and other branches use preview deployments. The Vercel CLI configures the project and domain; publishing a change is a normal Git push. Vercel uses Node.js 24, runs `npm run build` and serves `dist/`. The custom production domain is `zurich-tram-atlas.ralfboltshauser.com`.
 
 `vercel.json` specifies the static build and prevents long-lived caching of the service worker and web app manifest. App updates are offered through an explicit update prompt.

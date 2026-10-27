@@ -43,5 +43,10 @@
   "private": true,
   "engines": {
     "node": "24.x"
+  },
+  "homepage": "https://zurich-tram-atlas.ralfboltshauser.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ralfboltshauser/zurich-tram-atlas.git"
   }
 }

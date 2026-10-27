@@ -8,7 +8,7 @@ import { Plus, Minus, LocateFixed, ArrowUpRight } from 'lucide-react'
 import { Button } from './components/ui/button'
 import type { Catalog, MapData, Selection } from './types'
 
-type Props = { data: MapData; catalog: Catalog; selection: Selection; focusedStop: string | null; hideLabels: boolean; panelExpanded: boolean; onPlace: (id: string) => void; onLine: (line: string) => void }
+type Props = { data: MapData; catalog: Catalog; selection: Selection; focusedStop: string | null; hideLabels: boolean; bottomInset: number; onPlace: (id: string) => void; onLine: (line: string) => void }
 const empty: FeatureCollection = { type:'FeatureCollection',features:[] }
 
 export default function MapView(props: Props) {
@@ -53,7 +53,7 @@ export default function MapView(props: Props) {
         ]},
       })
       map.current=instance
-      if(window.innerWidth<768)instance.jumpTo({center:[8.538,47.376],zoom:12.7,padding:{top:0,left:0,right:0,bottom:window.innerHeight*.40}})
+      if(window.innerWidth<768)instance.jumpTo({center:[8.538,47.376],zoom:12.7,padding:{top:0,left:0,right:0,bottom:Math.min(props.bottomInset,window.innerHeight-180)}})
       instance.touchZoomRotate.disableRotation()
       instance.on('load',()=>{setReady(true)})
       instance.on('error',e=>{if(/worker|webgl|context/i.test(e.error.message))setFailed(true)})
@@ -94,7 +94,7 @@ export default function MapView(props: Props) {
     selected.features.forEach(f=>{if(f.geometry.type!=='GeometryCollection')walk(f.geometry.coordinates)})
     if(s.kind==='place'){const stop=[...catalog.stops,...catalog.streets].find(x=>x.id===s.id);if(stop)coords=[stop.coordinates]}
     if(s.kind==='overview')return
-    if(coords.length){const bounds=new maplibregl.LngLatBounds();coords.forEach(p=>bounds.extend([p[0],p[1]]));const mobile=window.innerWidth<768;m.fitBounds(bounds,{padding:mobile?{top:80,left:42,right:42,bottom:props.panelExpanded?window.innerHeight*.65:window.innerHeight*.43}:{top:90,left:80,right:80,bottom:90},maxZoom:s.kind==='place'?15.5:14.4,duration:matchMedia('(prefers-reduced-motion: reduce)').matches?0:700})}
+    if(coords.length){const bounds=new maplibregl.LngLatBounds();coords.forEach(p=>bounds.extend([p[0],p[1]]));const mobile=window.innerWidth<768;m.fitBounds(bounds,{padding:mobile?{top:48,left:32,right:32,bottom:Math.min(props.bottomInset+20,m.getContainer().clientHeight-150)}:{top:90,left:80,right:80,bottom:90},maxZoom:s.kind==='place'?15.5:14.4,duration:matchMedia('(prefers-reduced-motion: reduce)').matches?0:700})}
   },[props.selection,ready])
 
   useEffect(()=>{
@@ -104,8 +104,15 @@ export default function MapView(props: Props) {
     const f:FeatureCollection['features']=place?[{type:'Feature',geometry:{type:'Point',coordinates:place.coordinates},properties:{name:place.name}}]:[]
     ;(m.getSource('focused') as GeoJSONSource).setData({type:'FeatureCollection',features:f})
     const focused=props.catalog.stops.find(s=>s.id===props.focusedStop)
-    if(focused){const mobile=window.innerWidth<768;m.easeTo({center:focused.coordinates,zoom:Math.max(m.getZoom(),14.5),padding:mobile?{top:40,left:0,right:0,bottom:window.innerHeight*(props.panelExpanded ? .63 : .37)}:{top:0,left:0,right:0,bottom:0},duration:matchMedia('(prefers-reduced-motion: reduce)').matches?0:500})}
+    if(focused){const mobile=window.innerWidth<768;m.easeTo({center:focused.coordinates,zoom:Math.max(m.getZoom(),14.5),padding:mobile?{top:40,left:0,right:0,bottom:Math.min(props.bottomInset+20,m.getContainer().clientHeight-150)}:{top:0,left:0,right:0,bottom:0},duration:matchMedia('(prefers-reduced-motion: reduce)').matches?0:500})}
   },[props.focusedStop,props.selection,ready])
+
+  useEffect(()=>{
+    const m=map.current;if(!m||!ready)return
+    // Preserve geographic focus and zoom while the sheet gives space back to the map.
+    const bottom=Math.min(props.bottomInset+20,m.getContainer().clientHeight-150)
+    m.easeTo({padding:window.innerWidth<768?{top:40,left:24,right:24,bottom}:{top:0,left:0,right:0,bottom:0},duration:matchMedia('(prefers-reduced-motion: reduce)').matches?0:300})
+  },[props.bottomInset,ready])
 
   useEffect(()=>{
     const m=map.current;if(!m||!ready)return
@@ -114,7 +121,7 @@ export default function MapView(props: Props) {
     m.setLayoutProperty('focused-label','visibility',props.hideLabels?'none':'visible')
   },[props.hideLabels,ready])
 
-  function reset(){const m=map.current;if(!m||!ready)return;const b=new maplibregl.LngLatBounds();props.catalog.stops.forEach(s=>b.extend(s.coordinates));const mobile=window.innerWidth<768;m.fitBounds(b,{padding:mobile?{top:65,bottom:window.innerHeight*.43,left:20,right:20}:70,duration:500})}
+  function reset(){const m=map.current;if(!m||!ready)return;const b=new maplibregl.LngLatBounds();props.catalog.stops.forEach(s=>b.extend(s.coordinates));const mobile=window.innerWidth<768;m.fitBounds(b,{padding:mobile?{top:65,bottom:Math.min(props.bottomInset+20,m.getContainer().clientHeight-150),left:20,right:20}:70,duration:500})}
 
   return <section className="map-area" aria-label="Netzkarte">
     <div ref={container} className="map-canvas" data-testid="map" data-ready={ready&&!failed}/>

@@ -5,7 +5,7 @@ async function ready(page:Page,path='/') {
   await page.goto(path)
   await expect(page.getByTestId('map')).toHaveAttribute('data-ready','true')
 }
-async function expandPhone(page:Page){if((page.viewportSize()?.width??1440)<768)await page.getByRole('button',{name:'Details erweitern'}).first().click()}
+async function expandPhone(page:Page){if((page.viewportSize()?.width??1440)<768&&await page.getByTestId('explorer-sheet').getAttribute('data-sheet-state')!=='expanded')await page.getByRole('button',{name:'Details erweitern'}).first().click()}
 
 test('real map loads without application errors or third-party requests',async({page},testInfo)=>{
   const errors:string[]=[],remote:string[]=[]
@@ -29,11 +29,12 @@ test('line direction, geographic stepping, recall and deep link persistence',asy
   const list=page.getByRole('list',{name:'Haltestellen im Verlauf'})
   await expect(list.getByRole('button').first()).toHaveAccessibleName('Bahnhof Stettbach auf Karte zeigen')
   await page.getByRole('button',{name:'Nächste Haltestelle'}).click()
-  await expect(list.locator('[aria-current="step"]')).toHaveAccessibleName('Bahnhof Stettbach auf Karte zeigen')
+  await expect(page.locator('.stop-list [aria-current="step"]')).toHaveAttribute('aria-label','Bahnhof Stettbach auf Karte zeigen')
   await page.getByRole('button',{name:'Nächste Haltestelle'}).click()
-  await expect(list.locator('[aria-current="step"]')).toHaveAccessibleName('Mattenhof auf Karte zeigen')
+  await expect(page.locator('.stop-list [aria-current="step"]')).toHaveAttribute('aria-label','Mattenhof auf Karte zeigen')
   await page.getByRole('button',{name:'Vorherige Haltestelle'}).click()
-  await expect(list.locator('[aria-current="step"]')).toHaveAccessibleName('Bahnhof Stettbach auf Karte zeigen')
+  await expect(page.locator('.stop-list [aria-current="step"]')).toHaveAttribute('aria-label','Bahnhof Stettbach auf Karte zeigen')
+  await expandPhone(page)
   await page.getByRole('switch',{name:'Namen ausblenden'}).click()
   await expect(list.getByRole('button').first()).toHaveAccessibleName('Haltestelle 1 auf Karte zeigen')
   await expect(page.getByText('Wie heisst die nächste Haltestelle?',{exact:false})).toBeVisible()
@@ -74,7 +75,7 @@ test('learning path is usable and explicitly unreviewed',async({page},testInfo)=
   await expect(list.getByRole('button').first()).toHaveAccessibleName('Bellevue auf Karte zeigen')
   await expect(list.getByRole('button').last()).toHaveAccessibleName('Kunsthaus auf Karte zeigen')
   await list.getByRole('button',{name:'Kreuzplatz auf Karte zeigen',exact:true}).click()
-  await expect(list.locator('[aria-current="step"]')).toHaveAccessibleName('Kreuzplatz auf Karte zeigen')
+  await expect(page.locator('.stop-list [aria-current="step"]')).toHaveAttribute('aria-label','Kreuzplatz auf Karte zeigen')
   await page.screenshot({path:`qa/${testInfo.project.name}-exercise.png`})
 })
 
@@ -112,7 +113,7 @@ test('share and source dialogs work; layout fits the viewport',async({page})=>{
   await expect(page.getByRole('textbox',{name:'Link zur Ansicht'})).toHaveValue(/linie=7&richtung=1/)
   await page.getByRole('button',{name:'Schliessen',exact:true}).click()
   await page.getByRole('button',{name:'Über die Karte'}).click()
-  await expect(page.getByRole('dialog')).toContainText('Die Aktualität für den heutigen Betrieb ist nicht bestätigt')
+  await expect(page.getByRole('dialog',{name:'Eine Karte zum Verstehen.'})).toContainText('Die Aktualität für den heutigen Betrieb ist nicht bestätigt')
   await page.getByRole('button',{name:'Schliessen',exact:true}).click()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
   if((page.viewportSize()?.width??0)<768){

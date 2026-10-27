@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleHelp, Download, Eye, Info, MapPin, RefreshCw, Search, Share2, TrainFront, WifiOff, X } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronLeft, ChevronRight, Eye, Info, MapPin, RefreshCw, Search, Share2, TrainFront, WifiOff, X } from 'lucide-react'
 import { registerSW } from 'virtual:pwa-register'
 import { Button } from './components/ui/button'
 import { Switch } from './components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/dialog'
 import MapView from './MapView'
-import { normalize, readSelection, selectionQuery, type Catalog, type MapData, type Route, type Selection, type Stop } from './types'
+import ExplorerPanel, { sheetHeight, useSheetViewport, type SheetState } from './ExplorerPanel'
+import { normalize, readSelection, selectionQuery, type Catalog, type MapData, type Selection, type Stop } from './types'
 
 const memoryKey='tram-atlas-selection'
 function stored(){try{return localStorage.getItem(memoryKey)??''}catch{return ''}}
@@ -36,7 +37,9 @@ function Atlas({catalog,mapData}:Loaded){
   const [tab,setTab]=useState<'lines'|'exercises'>(()=>selection.kind==='exercise'?'exercises':'lines')
   const [focusedStop,setFocusedStop]=useState<string|null>(null)
   const [hideLabels,setHideLabels]=useState(false)
-  const [expanded,setExpanded]=useState(false)
+  const [sheetState,setSheetState]=useState<SheetState>('browse')
+  const viewport=useSheetViewport()
+  const mapInset=viewport.mobile?sheetHeight(sheetState,viewport.height,viewport.safeBottom):0
   const [query,setQuery]=useState('')
   const [searching,setSearching]=useState(false)
   const [searchIndex,setSearchIndex]=useState(0)
@@ -66,7 +69,7 @@ function Atlas({catalog,mapData}:Loaded){
   },[selection])
 
   useEffect(()=>{
-    const onPop=()=>{const s=readSelection(catalog,location.search);setSelection(s??{kind:'overview'});setTab(s?.kind==='exercise'?'exercises':'lines');setFocusedStop(null);setSearching(false);setExpanded(false)}
+    const onPop=()=>{const s=readSelection(catalog,location.search);setSelection(s??{kind:'overview'});setTab(s?.kind==='exercise'?'exercises':'lines');setFocusedStop(null);setSearching(false);setSheetState('browse')}
     window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop)
   },[catalog])
 
@@ -89,41 +92,44 @@ function Atlas({catalog,mapData}:Loaded){
   useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),6000);return()=>clearTimeout(timer)},[notice])
   useEffect(()=>{if(!focusedStop)return;document.querySelector(`[data-stop-id="${focusedStop}"]`)?.scrollIntoView({block:'nearest',behavior:'instant'})},[focusedStop])
 
-  function choose(next:Selection){
+  function choose(next:Selection, reveal:SheetState='browse'){
     const q=selectionQuery(next)
     if(q!==location.search)history.pushState({},'',location.pathname+q)
-    setSelection(next);setFocusedStop(null);setHideLabels(false);setSearching(false);setQuery('');setExpanded(false)
+    setSelection(next);setFocusedStop(null);setHideLabels(false);setSearching(false);setQuery('');setSheetState(reveal)
     if(next.kind==='line'||next.kind==='overview')setTab('lines')
     if(next.kind==='exercise')setTab('exercises')
   }
   function chooseLine(line:string){choose({kind:'line',line,direction:1})}
   function chooseStop(id:string){
     if(ids.includes(id)){setFocusedStop(id);return}
-    choose({kind:'place',id})
+    choose({kind:'place',id},sheetState==='hidden'||sheetState==='peek'?'peek':'browse')
   }
-  function step(delta:number){const next=currentIndex<0?0:Math.max(0,Math.min(ids.length-1,currentIndex+delta));setFocusedStop(ids[next])}
+  function focusStop(id:string){setFocusedStop(id);if(viewport.mobile&&sheetState==='expanded')setSheetState('peek')}
+  function step(delta:number){const next=currentIndex<0?0:Math.max(0,Math.min(ids.length-1,currentIndex+delta));focusStop(ids[next])}
   async function copy(){try{await navigator.clipboard.writeText(location.href);setCopied(true)}catch{setNotice('Du kannst den Link im Feld markieren und kopieren.')}}
-  const styleColor={'--route-color':route?.color??'#174d3d'} as CSSProperties
+  const styleColor={'--route-color':route?.color??'#174d3d','--sheet-inset':`${mapInset}px`} as CSSProperties
+  const sheetTitle=focusedStop?stopsById.get(focusedStop)?.name??'Zürich entdecken':route?.destination??place?.name??exercise?.title??'Zürich entdecken'
+  const sheetSubtitle=route?`Tram ${route.line} · ${route.stopIds.length} Haltestellen`:exercise?'Lernweg · ungeprüftes Beispiel':place?.kind==='street'?'Strasse · Zürich':place?'Haltestelle · Zürich':`${lines.length} Linien · ${catalog.stops.length} Haltestellen`
 
-  return <div className="atlas" style={styleColor}>
+  return <div className={`atlas sheet-${sheetState}`} style={styleColor}>
     <header className="app-header">
       <button className="brand" aria-label="Tram Atlas Startseite" onClick={()=>choose({kind:'overview'})}><span className="brand-mark"><TrainFront size={23} strokeWidth={1.7}/></span><span><strong>TRAM ATLAS<span className="brand-dot">.</span></strong><small>ZÜRICH ENTDECKEN</small></span></button>
       <div className="header-center"><span className="status-dot"/> Eine Stadt. Viele Verbindungen.</div>
       <div className="header-actions"><span className={'connection '+(!online?'is-offline':'')}>{!online?<WifiOff size={13}/>:offlineReady?<Check size={13}/>:<span className="tiny-dot"/>}<span>{!online?'Offline':offlineReady?'Offline bereit':'Lernkarte'}</span></span><Button variant="ghost" size="icon" onClick={()=>setInfo(true)} aria-label="Über die Karte"><Info size={19}/></Button></div>
     </header>
-    <main className={'workspace '+(expanded?'panel-expanded':'')}>
-      <aside className="sidebar" aria-label="Linien und Lernwege">
-        <button className="mobile-handle" onClick={()=>setExpanded(v=>!v)} aria-label={expanded?'Details verkleinern':'Details erweitern'}><span/></button>
+    <main className="workspace">
+      <ExplorerPanel state={sheetState} onStateChange={setSheetState} viewport={viewport} title={sheetTitle} subtitle={sheetSubtitle} line={route?.line} color={route?.color??'#174d3d'}
+        compactNavigation={ids.length>0?<><Button variant="ghost" size="icon" aria-label="Vorherige Haltestelle" disabled={currentIndex<=0} onClick={()=>step(-1)}><ChevronLeft/></Button><Button variant="ghost" size="icon" aria-label="Nächste Haltestelle" disabled={currentIndex===ids.length-1} onClick={()=>step(1)}><ChevronRight/></Button></>:undefined}>
         <div className="search-wrapper">
           <div className={'search-box '+(searching?'search-active':'')}><Search size={18}/><input ref={input} value={query} placeholder="Haltestelle oder Strasse …" aria-label="Haltestelle oder Strasse suchen" role="combobox" aria-expanded={searching&&!!query} aria-controls="place-results" aria-autocomplete="list" aria-activedescendant={searching&&results[searchIndex]?`result-${results[searchIndex].id}`:undefined}
-            onFocus={()=>setSearching(true)} onChange={e=>{setQuery(e.target.value);setSearching(true);setSearchIndex(0)}}
+            onFocus={()=>{setSearching(true);if(viewport.mobile)setSheetState('expanded')}} onChange={e=>{setQuery(e.target.value);setSearching(true);setSearchIndex(0)}}
             onKeyDown={e=>{if(e.key==='ArrowDown'){e.preventDefault();setSearchIndex(i=>Math.min(i+1,results.length-1))}if(e.key==='ArrowUp'){e.preventDefault();setSearchIndex(i=>Math.max(i-1,0))}if(e.key==='Enter'&&results[searchIndex]){choose({kind:'place',id:results[searchIndex].id});input.current?.blur()}if(e.key==='Escape')setSearching(false)}}/>
             {query?<button className="search-clear" aria-label="Suche löschen" onClick={()=>{setQuery('');input.current?.focus()}}><X size={15}/></button>:<kbd>⌘ K</kbd>}
           </div>
-          {searching&&query&&<div className="search-results" id="place-results" role="listbox" aria-label="Suchergebnisse">{results.length?results.map((s,i)=><button id={`result-${s.id}`} key={s.id} role="option" aria-selected={i===searchIndex} tabIndex={-1} onClick={()=>choose({kind:'place',id:s.id})}><MapPin size={16}/><span>{s.name}<small>{s.kind==='street'?'Strasse · Linien in der Umgebung':s.lines.map(l=>'Tram '+l).join(' · ')}</small></span><ArrowUpRight size={14}/></button>):<p role="status">Kein Ort gefunden. Versuche einen anderen Namen.</p>}</div>}
+          {searching&&query&&<div className="search-results" id="place-results" role="listbox" aria-label="Suchergebnisse">{results.length?results.map((s,i)=><button id={`result-${s.id}`} key={s.id} role="option" aria-selected={i===searchIndex} tabIndex={-1} onClick={()=>{choose({kind:'place',id:s.id});input.current?.blur()}}><MapPin size={16}/><span>{s.name}<small>{s.kind==='street'?'Strasse · Linien in der Umgebung':s.lines.map(l=>'Tram '+l).join(' · ')}</small></span><ArrowUpRight size={14}/></button>):<p role="status">Kein Ort gefunden. Versuche einen anderen Namen.</p>}</div>}
         </div>
 
-        <div className="section-tabs" onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();const buttons=[...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')];const next=buttons.find(b=>b!==e.target);next?.click();next?.focus()}}} role="tablist" aria-label="Entdecken"><button role="tab" id="tab-lines" tabIndex={tab==='lines'?0:-1} aria-selected={tab==='lines'} aria-controls="explore-panel" onClick={()=>{setTab('lines');if(selection.kind!=='overview')choose({kind:'overview'})}}><TrainFront size={15}/> Linien</button><button role="tab" id="tab-exercises" tabIndex={tab==='exercises'?0:-1} aria-selected={tab==='exercises'} aria-controls="explore-panel" onClick={()=>{setTab('exercises');setExpanded(false)}}><BookOpen size={15}/> Lernwege <span className="tab-count">1</span></button></div>
+        <div className="section-tabs" onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();const buttons=[...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')];const next=buttons.find(b=>b!==e.target);next?.click();next?.focus()}}} role="tablist" aria-label="Entdecken"><button role="tab" id="tab-lines" tabIndex={tab==='lines'?0:-1} aria-selected={tab==='lines'} aria-controls="explore-panel" onClick={()=>{setTab('lines');if(selection.kind!=='overview')choose({kind:'overview'})}}><TrainFront size={15}/> Linien</button><button role="tab" id="tab-exercises" tabIndex={tab==='exercises'?0:-1} aria-selected={tab==='exercises'} aria-controls="explore-panel" onClick={()=>{setTab('exercises');setSheetState('browse')}}><BookOpen size={15}/> Lernwege <span className="tab-count">1</span></button></div>
 
         <div className="panel-scroll" id="explore-panel" role="tabpanel" aria-labelledby={tab==='lines'?'tab-lines':'tab-exercises'}>
           {tab==='lines'&&selection.kind==='overview'&&<>
@@ -140,7 +146,7 @@ function Atlas({catalog,mapData}:Loaded){
             <button className="direction-button" onClick={()=>{const other=catalog.routes.find(r=>r.line===route.line&&r.direction!==route.direction);if(other)choose({kind:'line',line:other.line,direction:other.direction})}}><ArrowDown size={15}/><span>Richtung wechseln</span><span className="direction-end">{route.origin}</span></button>
             <div className="study-toggle"><div><Eye size={15}/><label htmlFor="recall">Namen ausblenden</label></div><Switch id="recall" checked={hideLabels} onCheckedChange={setHideLabels}/></div>
             {hideLabels&&<p className="recall-hint">Wie heisst die nächste Haltestelle? Blende die Namen wieder ein, um nachzusehen.</p>}
-            <StopList ids={ids} byId={stopsById} focused={focusedStop} hidden={hideLabels} onSelect={setFocusedStop}/>
+            <StopList ids={ids} byId={stopsById} focused={focusedStop} hidden={hideLabels} onSelect={focusStop}/>
           </>}
 
           {tab==='lines'&&place&&<>
@@ -159,17 +165,16 @@ function Atlas({catalog,mapData}:Loaded){
             <div className="selection-top"><button className="back-link" onClick={()=>{choose({kind:'overview'});setTab('exercises')}}><ArrowLeft size={14}/> Alle Lernwege</button><Button variant="ghost" size="icon" aria-label="Lernweg teilen" onClick={()=>{setShare(true);setCopied(false)}}><Share2 size={16}/></Button></div>
             <div className="exercise-heading"><span className="eyebrow">LERNWEG 01</span><h1>{exercise.title}</h1><p>{exercise.subtitle}</p></div>
             <p className="review-note"><Info size={16}/><span><strong>Ungeprüftes Beispiel</strong><br/>{exercise.note}</span></p>
-            <StopList ids={ids} byId={stopsById} focused={focusedStop} hidden={false} onSelect={setFocusedStop}/>
+            <StopList ids={ids} byId={stopsById} focused={focusedStop} hidden={false} onSelect={focusStop}/>
           </>}
         </div>
 
         {ids.length>0&&((tab==='lines'&&route)||(tab==='exercises'&&exercise))&&<div className="step-controls"><Button variant="outline" size="icon" aria-label="Vorherige Haltestelle" disabled={currentIndex<=0} onClick={()=>step(-1)}><ChevronLeft/></Button><div><span>{currentIndex<0?'SCHRITT FÜR SCHRITT':`${currentIndex+1} VON ${ids.length}`}</span><strong>{currentIndex<0?'Dem Verlauf folgen':hideLabels?`Haltestelle ${currentIndex+1}`:stopsById.get(ids[currentIndex])?.name}</strong></div><Button variant="outline" size="icon" aria-label="Nächste Haltestelle" disabled={currentIndex===ids.length-1} onClick={()=>step(1)}><ChevronRight/></Button></div>}
         <footer className="panel-footer"><span><span className="tiny-dot"/> Netzstand {catalog.metadata.sourceDate}</span><button onClick={()=>setInfo(true)}>Daten & Hinweise <ArrowUpRight size={12}/></button></footer>
-      </aside>
-      <MapView data={mapData} catalog={catalog} selection={selection} focusedStop={focusedStop} hideLabels={hideLabels} panelExpanded={expanded} onPlace={chooseStop} onLine={chooseLine}/>
+      </ExplorerPanel>
+      <MapView data={mapData} catalog={catalog} selection={selection} focusedStop={focusedStop} hideLabels={hideLabels} bottomInset={mapInset} onPlace={chooseStop} onLine={line=>choose({kind:'line',line,direction:1},sheetState==='hidden'||sheetState==='peek'?'peek':'browse')}/>
       <div className="map-key"><span><i className="key-route"/> Tramnetz</span><span><i className="key-stop"/> Haltestelle</span></div>
       {selection.kind!=='overview'&&<button className="clear-map" onClick={()=>choose({kind:'overview'})}><X size={15}/> Auswahl aufheben</button>}
-      <button className="mobile-expand" onClick={()=>setExpanded(v=>!v)} aria-label={expanded?'Details verkleinern':'Details erweitern'}>{expanded?<ChevronDown size={16}/>:<ChevronUp size={16}/>}</button>
     </main>
     {notice&&<div className="toast" role="status">{notice}<button aria-label="Hinweis schliessen" onClick={()=>setNotice('')}><X size={15}/></button></div>}
     {updateAvailable&&<div className="update-banner" role="status">Eine neue Version ist bereit.<Button size="sm" onClick={()=>updater.current?.(true)}>Aktualisieren</Button><button aria-label="Später aktualisieren" onClick={()=>setUpdateAvailable(false)}><X size={16}/></button></div>}

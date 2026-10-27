@@ -14,7 +14,7 @@ A minimal, interactive learning map of Zurich's tram network.
 - Share a link to a selected line, stop, street or learning path.
 - Install from the browser menu and use offline after **Offline bereit** appears.
 
-The phone layout has an expandable bottom panel. The desktop layout places the same controls beside the map. No account, database, paid map API or runtime third-party map requests are required.
+The phone layout uses a gesture-driven Base UI drawer with compact, browsing and expanded snap points. Drag the top handle, tap **Mehr Karte anzeigen** to keep a small route summary, or tap **×** to hide the panel completely. A floating **Linien & Suche** button reopens it. The selected line, direction and stop survive closing; compact previous/next controls let you follow the route with most of the map visible. Searching expands the drawer and uses keyboard-aware focus handling. The desktop layout places the same controls beside the map. No account, database, paid map API or runtime third-party map requests are required.
 
 ## Data and limitations
 
